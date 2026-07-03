@@ -29,15 +29,30 @@ def load_window_data(
     test_end: pd.Timestamp,
     features_dir: Path = FEATURES_DIR,
 ) -> pd.DataFrame | None:
-    """Load features + next-bar return target for a test window. Skip missing data gracefully."""
-    from src.features.store import read_features
+    """Load features + next-bar return target for a test window.
+
+    Loads day-partitioned feature files (each file contains hourly bars).
+    Computes `next_return` as the next-bar return from the OHLCV close column.
+    """
+    import logging
+    from pathlib import Path
+
+    log = logging.getLogger("backtest.walkforward")
 
     frames = []
     for asset in assets:
-        for dt in pd.date_range(test_start, test_end, freq="D"):
-            date_str = dt.strftime("%Y-%m-%d")
-            df = read_features(asset, date_str, features_dir)
-            if df.empty:
+        # Load all day-partitioned files for this asset in the date range
+        asset_dir = features_dir / asset
+        if not asset_dir.exists():
+            continue
+        for date_str in pd.date_range(test_start, test_end, freq="D").strftime("%Y-%m-%d"):
+            part_path = asset_dir / f"{date_str}.parquet"
+            if not part_path.exists():
+                continue
+            try:
+                df = pd.read_parquet(part_path)
+            except Exception as e:
+                log.warning("Failed to read %s: %s", part_path, e)
                 continue
             df = df.copy()
             df["asset"] = asset

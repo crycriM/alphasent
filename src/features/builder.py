@@ -94,7 +94,7 @@ def build_feature_vector(
         visible = events
 
     if visible.empty:
-        return _zero_feature_vector(lookback_hours)
+        return zero_feature_vector(lookback_hours)
 
     return {
         # Volume features
@@ -134,7 +134,7 @@ def build_feature_vector(
     }
 
 
-def _zero_feature_vector(lookback_hours: int = 24) -> dict:
+def zero_feature_vector(lookback_hours: int = 24) -> dict:
     """Return a zero-filled feature dict for when no events are visible."""
     return {
         "n_events": 0,
