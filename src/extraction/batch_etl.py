@@ -5,6 +5,12 @@ Reads all RawNewsItems from the Layer-1 raw store, checks the cache,
 calls the LLM for uncached items, computes novelty, and writes
 EventRecords to the cache.
 
+PRE-FILTER: Before calling the LLM, each article's title+body is scanned
+against the per-month crypto universe (from data/perimeter/) to determine
+if it concerns an actively-traded token. If no ticker match, the article
+is skipped entirely — saving LLM tokens and avoiding false positives from
+models that don't recognize newer tokens.
+
 Never re-run during backtesting — this is a one-pass offline job.
 If model or prompt version changes, old cached records remain valid.
 """
@@ -12,7 +18,7 @@ If model or prompt version changes, old cached records remain valid.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -32,6 +38,7 @@ from src.extraction.cache import (
 from src.extraction.model import call_llm
 from src.extraction.novelty import compute_novelty
 from src.extraction.prompt import build_extraction_prompt
+from src.ingest.perimeter import load_universe, match_ticker
 
 log = logging.getLogger("extraction.batch")
 
@@ -56,7 +63,7 @@ def read_all_raw_news(data_root: Path = RAW_NEWS_DIR) -> pd.DataFrame:
                 df["asset_mentions"] = None
             dfs.append(df)
 
-    # Check unified raw/news/
+    # Check unified raw/news/ (GDELT)
     if data_root.exists():
         for f in sorted(data_root.glob("*.parquet")):
             df = pd.read_parquet(f)
@@ -115,6 +122,48 @@ def read_all_raw_news(data_root: Path = RAW_NEWS_DIR) -> pd.DataFrame:
     return combined
 
 
+def _resolve_universe(article_dates: pd.Series) -> set[str]:
+    """Load the crypto universe for the month of the earliest article.
+    
+    Assumes the entire batch is from roughly the same month, so we pick a single
+    universe at the start. For multi-month batches the caller should chunk.
+    """
+    if article_dates.empty or article_dates.isna().all():
+        univ_date = date.today().replace(day=1)
+    else:
+        earliest = article_dates.min()
+        if hasattr(earliest, "to_pydatetime"):
+            earliest = earliest.to_pydatetime()
+        univ_date = date(earliest.year, earliest.month, 1)
+
+    universe = load_universe(univ_date)
+    log.info("Using crypto universe from %s: %d tickers", univ_date, len(universe))
+    return universe
+
+
+def _safe_str(val) -> str:
+    """Convert a pandas cell value to a string, handling NaN/None/floats."""
+    if val is None:
+        return ""
+    if isinstance(val, float):
+        import math
+        return "" if math.isnan(val) else str(val)
+    if isinstance(val, bytes):
+        return val.decode("utf-8", errors="replace")
+    return str(val)
+
+
+def _article_text(row) -> str:
+    """Combine title + body into a single searchable text."""
+    parts = [_safe_str(row.get("title", ""))]
+    body = _safe_str(
+        row.get("body", "") or row.get("summary", "") or row.get("description", "")
+    )
+    if body:
+        parts.append(body)
+    return " ".join(parts)
+
+
 def run_batch_extraction(
     raw_df: pd.DataFrame | None = None,
     data_root: Path = RAW_NEWS_DIR,
@@ -141,10 +190,13 @@ def run_batch_extraction(
     raw_df = raw_df[raw_df["title"].str.len() > 0].copy()
     log.info("Processing %d items with valid titles", len(raw_df))
 
-    # Sort by published_at so the novelty pool only ever contains events that
+    # Sort by published_at so the novelty pool only contains events that
     # were knowably published before the current item (point-in-time safety).
     if "published_at" in raw_df.columns:
         raw_df = raw_df.sort_values("published_at").reset_index(drop=True)
+
+    # Load the crypto universe for the earliest items in this batch
+    universe = _resolve_universe(raw_df["published_at"])
 
     # Preload all cached records for the current (model, prompt) version in one
     # pass. This is both the cache-hit source (no per-row parquet reads) and the
@@ -159,71 +211,98 @@ def run_batch_extraction(
 
     cache_hits = 0
     cache_misses = 0
+    skipped_no_match = 0
     new_records = []
     failed_items = []
 
     for _, row in raw_df.iterrows():
-        content_hash = compute_content_hash(row["title"], row.get("body", ""))
+        content_hash = compute_content_hash(
+            _safe_str(row.get("title", "")),
+            _safe_str(row.get("body", "") or row.get("summary", "") or row.get("description", "")),
+        )
 
         if cache_exists(content_hash, MODEL_VERSION, PROMPT_VERSION):
             cached = load_from_cache(content_hash, MODEL_VERSION, PROMPT_VERSION)
             if cached:
                 # Carry title/published_at for the novelty pool
-                cached["title"] = row["title"]
-                cached["published_at"] = row.get(
-                    "published_at", row.get("ingested_at")
-                )
+                cached["title"] = _safe_str(row.get("title", ""))
+                pub = row.get("published_at", row.get("ingested_at"))
+                if isinstance(pub, float):
+                    pub = None  # NaN
+                cached["published_at"] = pub
                 pool_df = pd.concat(
                     [pool_df, pd.DataFrame([cached])], ignore_index=True
                 )
                 cache_hits += 1
             continue
 
-        # Cache miss — need to extract
+        # Cache miss — check if article mentions any known ticker
+        text = _article_text(row)
+        matched_ticker = match_ticker(text, universe)
+
+        if matched_ticker is None:
+            skipped_no_match += 1
+            continue
+
+        # We have a ticker match — proceed with extraction
         cache_misses += 1
 
         if dry_run:
-            prompt = build_extraction_prompt(row["title"], row.get("body", ""))
-            log.info("DRY RUN: would extract for %s — prompt length: %d chars",
-                     row["item_id"][:8], len(prompt))
+            prompt = build_extraction_prompt(
+                _safe_str(row.get("title", "")),
+                _safe_str(row.get("body", "") or row.get("summary", "") or row.get("description", "")),
+            )
+            log.info("DRY RUN: would extract [%s] %s — prompt length: %d chars",
+                     matched_ticker, _safe_str(row.get("item_id", ""))[:8], len(prompt))
             continue
 
         # Build prompt
-        prompt = build_extraction_prompt(row["title"], row.get("body", ""))
+        prompt = build_extraction_prompt(
+            _safe_str(row.get("title", "")),
+            _safe_str(row.get("body", "") or row.get("summary", "") or row.get("description", "")),
+        )
 
         # Call LLM
         try:
             result = call_llm(prompt)
 
-            published_at = row.get("published_at", row.get("ingested_at"))
+            pub = row.get("published_at", row.get("ingested_at"))
+            if isinstance(pub, float):
+                pub = None  # NaN
+            published_at = pub
+
+            # Override asset with the one matched from perimeter (LLM may miss
+            # newer tokens, but our regex won't)
+            llm_asset = str(result.get("asset", "UNKNOWN"))
+            final_asset = matched_ticker if matched_ticker else llm_asset
 
             # Compute novelty against the full PIT-filtered pool
             event_for_novelty = {
-                "asset": result["asset"],
+                "asset": final_asset,
                 "event_type": result["event_type"],
                 "extracted_at": datetime.now(timezone.utc),
                 "published_at": published_at,
                 "content_hash": content_hash,
-                "title": row["title"],
+                "title": _safe_str(row.get("title", "")),
             }
             novelty_score = compute_novelty(event_for_novelty, pool_df)
 
             # Build EventRecord
             record = {
-                "item_id": str(row["item_id"]),
+                "item_id": _safe_str(row.get("item_id", "")),
                 "content_hash": content_hash,
                 "model_version": MODEL_VERSION,
                 "prompt_version": PROMPT_VERSION,
                 "extracted_at": datetime.now(timezone.utc),
                 "published_at": published_at,
-                "asset": str(result["asset"]),
+                "asset": final_asset,
                 "event_type": str(result["event_type"]),
                 "polarity": float(result["polarity"]),
                 "magnitude": float(result["magnitude"]),
                 "novelty": float(novelty_score),
                 "confidence": float(result["confidence"]),
                 "extraction_only": bool(result["extraction_only"]),
-                "title": row["title"],
+                "title": _safe_str(row.get("title", "")),
             }
             # Save to cache (writes only EventRecord fields to parquet)
             save_to_cache(record, MODEL_VERSION, PROMPT_VERSION)
@@ -233,14 +312,20 @@ def run_batch_extraction(
             new_records.append(record)
 
             log.info(
-                "Extracted [%s] %s: %s p=%.2f m=%.2f n=%.2f conf=%.2f only=%s",
-                row["item_id"][:8], result["asset"], result["event_type"],
+                "Extracted [%s] %s: %s p=%.2f m=%.2f n=%.2f conf=%.2f",
+                _safe_str(row.get("item_id", ""))[:8], final_asset, result["event_type"],
                 result["polarity"], result["magnitude"], novelty_score,
-                result["confidence"], result["extraction_only"],
+                result["confidence"],
             )
         except Exception as e:
-            log.error("Failed to extract %s: %s", row["item_id"][:8], e)
-            failed_items.append({"item_id": row["item_id"], "error": str(e)})
+            log.error("Failed to extract %s: %s", _safe_str(row.get("item_id", ""))[:8], e)
+            failed_items.append({"item_id": _safe_str(row.get("item_id", "")), "error": str(e)})
+
+    if skipped_no_match > 0:
+        log.info(
+            "Skipped %d items: no ticker match in perimeter universe",
+            skipped_no_match,
+        )
 
     if failed_items:
         log.warning(
@@ -261,13 +346,17 @@ def run_batch_extraction(
         existing_cols = [c for c in columns if c in final_df.columns]
         final_df = final_df[existing_cols]
         log.info(
-            "Extraction complete: %d cache hits, %d new extractions, %d total records",
-            cache_hits, len(new_records), len(final_df),
+            "Extraction complete: %d cache hits, %d new extractions, "
+            "%d skipped (no ticker), %d total records",
+            cache_hits, len(new_records), skipped_no_match, len(final_df),
         )
         return final_df
     else:
-        log.info("Extraction complete: %d cache hits, %d new extractions, 0 total",
-                 cache_hits, len(new_records))
+        log.info(
+            "Extraction complete: %d cache hits, %d new extractions, "
+            "%d skipped (no ticker), 0 total",
+            cache_hits, len(new_records), skipped_no_match,
+        )
         return pd.DataFrame()
 
 

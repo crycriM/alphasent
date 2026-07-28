@@ -59,6 +59,8 @@ from pydantic import BaseModel, Field, field_validator
 # Each feed: (logical_name, url). source_domain is derived from the feed/link host.
 # Publisher feeds GDELT also indexes — closer to the backfill distribution than
 # aggregators, which shrinks train/serve skew.
+# CryptoSlate blocks programmatic access (403); included below with User-Agent
+# override in fetch code, but may remain broken.
 DEFAULT_FEEDS: list[tuple[str, str]] = [
     ("coindesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
     ("cointelegraph", "https://cointelegraph.com/rss"),
@@ -68,6 +70,17 @@ DEFAULT_FEEDS: list[tuple[str, str]] = [
     ("newsbtc", "https://www.newsbtc.com/feed/"),
     ("bitcoincom", "https://news.bitcoin.com/feed/"),
     ("utoday", "https://u.today/rss"),
+    # New sources added July 2026, ~140 extra items/day
+    ("cryptonews", "https://crypto.news/feed/"),
+    ("cryptopotato", "https://cryptopotato.com/feed/"),
+    ("zycrypto", "https://www.zycrypto.com/feed/"),
+    ("beincrypto", "https://beincrypto.com/feed/"),
+    ("ambcrypto", "https://ambcrypto.com/feed/"),
+    ("dailycoin", "https://dailycoin.com/feed/"),
+    ("blockonomi", "https://blockonomi.com/feed/"),
+    ("bitcoinist", "https://bitcoinist.com/feed/"),
+    ("cryptobriefing", "https://cryptobriefing.com/feed/"),
+    ("cryptoslate", "https://cryptoslate.com/feed/"),  # behind Cloudflare; may 403
 ]
 
 REQUEST_TIMEOUT = 30.0

@@ -56,8 +56,6 @@ def load_window_data(
                 continue
             df = df.copy()
             df["asset"] = asset
-            if "close" in df.columns:
-                df["next_return"] = df["close"].pct_change().shift(-1)
             frames.append(df)
 
     if not frames:
@@ -65,4 +63,10 @@ def load_window_data(
 
     combined = pd.concat(frames)
     combined = combined.sort_index()
+    
+    # Fix: compute next_return AFTER concat+sort, grouped by asset
+    # This recovers cross-midnight returns that the per-file computation loses
+    if "close" in combined.columns:
+        combined["next_return"] = combined.groupby("asset")["close"].pct_change().shift(-1)
+    
     return combined.dropna(subset=["next_return"])

@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: alphasent
+Version: 0.1.0
+Summary: LLM-driven crypto news → alpha feature pipeline
+Requires-Python: >=3.11
+License-File: LICENSE
+Requires-Dist: numpy==2.4.6
+Requires-Dist: pandas==3.0.3
+Requires-Dist: pyarrow==24.0.0
+Requires-Dist: pydantic==2.13.4
+Requires-Dist: httpx==0.28.1
+Requires-Dist: scikit-learn==1.9.0
+Requires-Dist: scipy==1.17.1
+Requires-Dist: lightgbm==4.6.0
+Requires-Dist: feedparser==6.0.12
+Requires-Dist: trafilatura==2.1.0
+Requires-Dist: google-cloud-bigquery>=3.42.1
+Requires-Dist: db-dtypes>=1.7.0
+Provides-Extra: dev
+Requires-Dist: pytest==9.1.1; extra == "dev"
+Dynamic: license-file

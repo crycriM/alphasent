@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=78", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alphasent"
+version = "0.1.0"
+description = "LLM-driven crypto news → alpha feature pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy==2.4.6",
+    "pandas==3.0.3",
+    "pyarrow==24.0.0",
+    "pydantic==2.13.4",
+    "httpx==0.28.1",
+    "scikit-learn==1.9.0",
+    "scipy==1.17.1",
+    "lightgbm==4.6.0",
+    "feedparser==6.0.12",
+    "trafilatura==2.1.0",
+    "google-cloud-bigquery>=3.42.1",
+    "db-dtypes>=1.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "snippets*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

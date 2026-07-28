@@ -20,7 +20,7 @@ LOG_DIR = PROJECT_ROOT                    # ingest.log lives here
 
 # --- LLM ---
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8079/v1")
-LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "llama3-8b")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "phi4")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
 LLM_TOP_P = float(os.getenv("LLM_TOP_P", "0.95"))
 LLM_REPETITION_PENALTY = float(os.getenv("LLM_REPETITION_PENALTY", "1.1"))
@@ -30,7 +30,7 @@ LLM_TIMEOUT = 60.0                       # seconds per extraction call
 LLM_MAX_RETRIES = 3
 
 # Model/prompt versioning — change these to force re-extraction
-MODEL_VERSION = "llama3-8b-q4km-v1"
+MODEL_VERSION = "phi4-q6k-v1"
 PROMPT_VERSION = "1.0.0"
 
 # --- Extraction ---

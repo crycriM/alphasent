@@ -30,18 +30,19 @@ log = logging.getLogger("ingest.gdelt")
 
 GDELT_QUERY = """
 SELECT
-    TIMESTAMP_MICROS(CAST(DATE * 1000 AS INT64)) AS crawl_ts,
+    PARSE_TIMESTAMP('%Y%m%d%H%M%S', CAST(DATE AS STRING)) AS crawl_ts,
     DocumentIdentifier AS url,
     SourceCommonName AS source_name,
     V2Themes AS themes,
     V2Organizations AS orgs,
     V2Persons AS persons,
     CAST(SPLIT(V2Tone, ',')[OFFSET(0)] AS FLOAT64) AS doc_tone
-FROM `gdelt-bq.gdeltv2.gkg_partitioned`
+FROM gdelt-bq.gdeltv2.gkg_partitioned
 WHERE
     DATE(_PARTITIONTIME) BETWEEN @start_date AND @end_date
     AND (
-        V2Themes LIKE '%CRYPTOCURRENCY%'
+        REGEXP_CONTAINS(V2Themes, 'ECON_BITCOIN')
+        OR REGEXP_CONTAINS(V2Themes, 'ECON_CRYPTOCURRENCY')
         OR REGEXP_CONTAINS(DocumentIdentifier,
             r'coindesk\\.com|cointelegraph\\.com|decrypt\\.co|'
             r'theblock\\.co|bitcoinmagazine\\.com|cryptoslate\\.com')
@@ -49,7 +50,7 @@ WHERE
 """
 
 # GDELT project ID; requires google-cloud-bigquery client library and credentials
-GDELT_PROJECT_ID = os.getenv("GDELT_PROJECT_ID", "gdelt-bq")
+GDELT_PROJECT_ID = os.getenv("GDELT_PROJECT_ID", "endless-empire-498816-j2")
 GDELT_DATASET = os.getenv("GDELT_DATASET", "gdeltv2")
 GDELT_TABLE = os.getenv("GDELT_TABLE", "gkg_partitioned")
 
@@ -103,7 +104,13 @@ def _extract_asset_mentions(orgs: str, persons: str) -> list[str]:
 
 def _to_raw_news_item(row: pd.Series) -> RawNewsItem:
     """Convert a GDELT row to a RawNewsItem."""
-    crawl_ts = pd.Timestamp(row["crawl_ts"], tz="UTC")
+    crawl_ts = row["crawl_ts"]
+    if not isinstance(crawl_ts, pd.Timestamp):
+        crawl_ts = pd.Timestamp(crawl_ts)
+    if hasattr(crawl_ts, 'tz') and crawl_ts.tz is None:
+        crawl_ts = crawl_ts.tz_localize("UTC")
+    elif hasattr(crawl_ts, 'tz'):
+        crawl_ts = crawl_ts.tz_convert("UTC")
     url = str(row["url"])
     date_str = crawl_ts.strftime("%Y-%m-%d")
     orgs = str(row.get("orgs", ""))
