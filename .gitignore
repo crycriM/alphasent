@@ -5,6 +5,7 @@ data/
 *.log
 PLAN.md
 TASK.md
+*slop.md
 auth.json
 
 .idea
