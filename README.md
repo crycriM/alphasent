@@ -252,40 +252,22 @@ All settings in `src/config.py`, overridable via environment variables:
 ## Storage Layout
 
 ```
-data/
+data/                             # (gitignored — runtime artifacts only)
 ├── perimeter/                     # Monthly perp universe (survivorship-bias input)
-│   └── recup_perimeter_YYYY-MM-DD.json
-├── news/                          # GDELT backfill (one file per day, 371 days)
-│   └── YYYY-MM-DD.parquet
+├── news/                          # GDELT backfill
 ├── crypto_rss/                    # RSS ingestion (17 feeds, 15-min cron)
-│   ├── state.json                 # Per-feed dedup state
-│   ├── normalized/YYYY-MM-DD.parquet
-│   └── raw_json/                  # Per-run raw archives
 ├── ohlcv/                         # Binance OHLCV
-│   └── {SYMBOL}_1h.parquet
 ├── features/                      # Layer-3 feature store
-│   └── {ASSET}/YYYY-MM-DD.parquet
+├── features_llama3_backup/        # Legacy features (llama3-8b)
 ├── cache/                         # LLM extraction cache
-│   └── extractions/{hash[:2]}/{hash}.parquet
 ├── results/                       # Backtest/analysis outputs
-│   ├── car_adjusted.csv
-│   ├── contamination_redaction.csv
-│   ├── contamination_redaction_detail_llama3-8b-q4km-v1.csv
-│   ├── contamination_redaction_detail_phi4-q6k-v1.csv
-│   ├── corpus_timeline.csv
-│   ├── ic_grid.csv
-│   └── model_extraction_compare.csv
-├── horizon_scan_car.csv
-├── horizon_scan_ic.csv
-├── phase1_rare_events.csv
-└── phase2_daily_bars.csv
+└── *.csv                          # Phase analysis outputs
 ```
 
 ## Project Structure
 
 ```
 alphasent/
-├── auth.json                      # GCP service account key
 ├── pyproject.toml                 # Python project config
 ├── src/
 │   ├── config.py                  # All configuration
@@ -324,19 +306,7 @@ alphasent/
 ├── tests/                         # Test suite
 ├── snippets/                      # Standalone ingestion scripts
 │   └── crypto_rss_ingest.py       # Multi-feed RSS ingester
-├── data/
-│   ├── perimeter/                 # Monthly perp universe (input, 35 files)
-│   ├── news/                      # GDELT output (371 partitions)
-│   ├── crypto_rss/                # RSS output (17 feeds, live)
-│   ├── ohlcv/                     # Binance OHLCV (5 symbols × 1h)
-│   ├── features/                  # Feature store (phi4)
-│   ├── features_llama3_backup/    # Legacy features (llama3-8b)
-│   ├── cache/                     # LLM extraction cache
-│   ├── results/                   # Backtest/analysis outputs
-│   ├── horizon_scan_car.csv       # Analysis output
-│   ├── horizon_scan_ic.csv
-│   ├── phase1_rare_events.csv
-│   └── phase2_daily_bars.csv
+├── data/                          # (gitignored)
 ├── PLAN.md                        # Detailed project plan
 └── README.md                      # This file
 
