@@ -1,6 +1,6 @@
 ## AGENTS.md guidelines
 
-This repository hosts an alternative data pipeline for crypto sentiment. It is built to support both backtest mode and live mode. Two different sources of data are used: one for past data: GDELT and one for current data, CryptoPanic, that will start accumulating when ready.
+This repository hosts an alternative data pipeline for crypto sentiment. It is built to support both backtest mode and live mode. Two different sources of data are used: one for past data: GDELT and one for current data collating several RSS feeds, started accumulating.
 
 ### Detailed guidelines
 
@@ -13,6 +13,5 @@ Modern Python using a project virtual env.
 
 ### LLM calls
 
-A self-hosted LLM will be used: llama3-8b. It currently runs on this machine on port 8079 with an openAPI chat interface. Its context is small (8k) and it's purposely an old model to avoid lookahead.
-
+Two self-hosted LLMs are used: llama3-8b (Q1-2024) and phi-4 (Q4-2024). It is served locally on port 8079 with an openAPI chat interface. They are purposely old models to avoid lookahead.
 

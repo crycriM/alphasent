@@ -328,6 +328,7 @@ alphasent/
 
 ## References
 
+- **Research whitepaper:** [WHITEPAPER.md](WHITEPAPER.md) — IC-based study of the findings: what did not work and why
 - **Project plan:** [PLAN.md](PLAN.md) — 4-layer architecture, data sources, contamination audit
 - **RSS skill:** `skill_view("alphasent-rss-ingest")` — cron setup, feed list, data layout
 - **Perimeter format:** `src/ingest/perimeter.py` — ticker normalization, alias resolution

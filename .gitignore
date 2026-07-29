@@ -7,3 +7,10 @@ PLAN.md
 TASK.md
 auth.json
 
+.idea
+.vscode
+.claude
+.zed
+
+# Python packaging artifacts
+*.egg-info/

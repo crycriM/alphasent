@@ -3,6 +3,26 @@
 **Date:** 2026-07-28  
 **Basis:** [ALPHA_EVOLUTION_PLAN.md](ALPHA_EVOLUTION_PLAN.md) implementation
 
+> **Post-hoc note (2026-07-29).** The positive results below do not survive the
+> re-examination in [WHITEPAPER.md](WHITEPAPER.md), for identifiable reasons:
+>
+> - **Phase 0 IC peak (0.05–0.08 at 72h):** point estimates reproduce, but the CI
+>   computation was invalid (per-asset ICs fed to a Sharpe bootstrap). With
+>   overlap-robust Newey–West inference the same cells read t ≈ 1.3–1.5 — not
+>   distinguishable from zero (~65 independent 72h observations).
+> - **Phase 1 Sharpe 1.88:** in-sample — the Ridge is fit and evaluated on the same
+>   rows ([phase1_rare_events.py:96](scripts/phase1_rare_events.py#L96)); per-trade
+>   t over the 66 trades is ≈ 1.4; and the −0.17-Sharpe buy-and-hold baseline made
+>   any flat strategy look like outperformance. Under a 70/30 time split the same
+>   pipeline yields Sharpe ≤ 0 (see `docs/figures/inference.png` — the rare-event
+>   variant has zero flag events in the train window and never trades).
+> - **Phase 2 "hourly beats daily":** the daily arm's target was `shift(-72)` on
+>   daily bars = 72 *days*, not 72 hours. Measured consistently, hourly and daily
+>   cadence give identical ICs.
+> - **Phase 3 Sharpe deltas (±0.1–0.2):** within run-to-run noise of an in-sample fit.
+> - The **unsure-bucket red flag** below was correct: the market-adjusted event study
+>   confirms the raw CAR drift was beta.
+
 ---
 
 ## Phase 0: Horizon Scan (COMPLETED)

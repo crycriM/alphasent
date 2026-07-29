@@ -59,10 +59,10 @@ def fetch_ohlcv() -> None:
     )
 
 
-def load_features() -> pd.DataFrame:
+def load_features(features_dir: Path = FEATURES_DIR) -> pd.DataFrame:
     """Load all feature files across assets and dates."""
     frames = []
-    for asset_dir in sorted(FEATURES_DIR.iterdir()):
+    for asset_dir in sorted(features_dir.iterdir()):
         if not asset_dir.is_dir():
             continue
         asset = asset_dir.name
