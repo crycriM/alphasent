@@ -8,21 +8,21 @@ point-in-time-safe alpha features for quantitative signal models.
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  LAYER 0: RAW INGEST                                                │
-│  GDELT BigQuery (1yr backfill)  |  RSS (17 feeds, 15-min cron)      │
+│  GDELT BigQuery (371 days)  |  RSS (17 feeds, 15-min cron)          │
 └─────────────────────┬───────────────────────────────────────────────┘
                       ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  LAYER 1: RAW STORE                                                 │
-│  data/news/YYYY-MM-DD.parquet   (GDELT, ~340K records)              │
+│  data/news/YYYY-MM-DD.parquet   (GDELT, 371 days)                   │
 │  data/crypto_rss/normalized/    (RSS, ~400-500 items/day forward)   │
 │  data/ohlcv/{SYMBOL}.parquet    (Binance OHLCV)                     │
 └─────────────────────┬───────────────────────────────────────────────┘
                       ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  LAYER 2: LLM EXTRACTION ETL  (offline, one-pass, cached)           │
-│  perimeter pre-filter → budget_prompt → LLM → EventRecord           │
+│  perimeter pre-filter → budget_prompt → LLM → EventRecord            │
 │  Survivorship-bias-free: only articles matching that month's         │
-│  active perp universe (data/perimeter/) get sent to the LLM          │
+│  active perp universe (data/perimeter/) get sent to the LLM           │
 └─────────────────────┬───────────────────────────────────────────────┘
                       ▼
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -36,6 +36,7 @@ point-in-time-safe alpha features for quantitative signal models.
 │  LAYER 4: BACKTEST ENGINE                                           │
 │  walk-forward: features[t] + ohlcv[t] → signal → PnL[t+1]           │
 │  Baselines: momentum, raw-tone, buy-and-hold                        │
+│  Analysis: IC/Car, contamination redaction, temporal holdout          │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -53,14 +54,14 @@ source .venv/bin/activate
 
 | Source | Purpose | Status |
 |--------|---------|--------|
-| **GDELT GKG** | Historical news (Jul 2025 – present) | ✅ Backfilled: ~340K records via BigQuery |
+| **GDELT GKG** | Historical news (Jul 2025 – present) | ✅ Backfilled: 371 days via BigQuery |
 | **RSS feeds** | Live forward news (17 publishers) | ✅ Running every 15 min, ~500 items/day |
-| **Binance REST** | OHLCV price data | ✅ Code ready, needs fetching |
-| **CryptoPanic API** | Community-curated news feed | ❌ Free tier RSS-only, dead feed |
+| **Binance REST** | OHLCV price data | ✅ 5 symbols fetched (BTC, ETH, SOL, BNB, XRP) |
+| **CryptoPanic API** | Community-curated news feed | ❌ Free tier RSS-only, not used |
 
 ### Perimeter Files (Survivorship-Bias Shield)
 
-> **The core problem:** The LLM (`llama3-8b`) doesn't know about newer tokens (ONDO, HYPE, AI16Z). Using a newer LLM introduces lookahead bias (it "knows" LUNA collapsed, FTT went to zero).
+> **The core problem:** The LLM (`phi4`) doesn't know about newer tokens (ONDO, HYPE, AI16Z). Using a newer LLM introduces lookahead bias (it "knows" LUNA collapsed, FTT went to zero).
 >
 > **The solution:** Monthly perpetual-swap perimeter files from `data/perimeter/`. These list all actively traded perp symbols across Binance, Hyperliquid, Okex, and Bybit for a given month. Before any LLM call, the article is scanned against that month's universe — if no ticker match, it's skipped. This is **survivorship-bias-safe**: tokens that were later delisted aren't retroactively tagged as "crypto."
 
@@ -241,12 +242,12 @@ All settings in `src/config.py`, overridable via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LLM_BASE_URL` | `http://localhost:8079/v1` | LLM endpoint |
-| `LLM_MODEL_NAME` | `llama3-8b` | Model name |
+| `LLM_MODEL_NAME` | `phi4` | Model name |
 | `LLM_TEMPERATURE` | `0` | Sampling temperature |
 | `GOOGLE_APPLICATION_CREDENTIALS` | `auth.json` | GCP service account key path |
 | `GDELT_PROJECT_ID` | `endless-empire-498816-j2` | BigQuery billing project |
 | `RSS_DATA_ROOT` | `./data/crypto_rss` | RSS data directory |
-| `CRYPTOPANIC_AUTH_TOKEN` | *(unused)* | CryptoPanic API token (paid tier only) |
+| `CRYPTOPANIC_AUTH_TOKEN` | *(unused)* | CryptoPanic API token (not used) |
 
 ## Storage Layout
 
@@ -254,7 +255,7 @@ All settings in `src/config.py`, overridable via environment variables:
 data/
 ├── perimeter/                     # Monthly perp universe (survivorship-bias input)
 │   └── recup_perimeter_YYYY-MM-DD.json
-├── news/                          # GDELT backfill (one file per day, 340K records)
+├── news/                          # GDELT backfill (one file per day, 371 days)
 │   └── YYYY-MM-DD.parquet
 ├── crypto_rss/                    # RSS ingestion (17 feeds, 15-min cron)
 │   ├── state.json                 # Per-feed dedup state
@@ -266,12 +267,18 @@ data/
 │   └── {ASSET}/YYYY-MM-DD.parquet
 ├── cache/                         # LLM extraction cache
 │   └── extractions/{hash[:2]}/{hash}.parquet
-├── cryptopanic/                   # CryptoPanic (unused — dead free feed)
-│   ├── state.json
-│   └── raw_json/
-└── signals/                       # Live signal output
-    ├── positions.json
-    └── retrain_state.json
+├── results/                       # Backtest/analysis outputs
+│   ├── car_adjusted.csv
+│   ├── contamination_redaction.csv
+│   ├── contamination_redaction_detail_llama3-8b-q4km-v1.csv
+│   ├── contamination_redaction_detail_phi4-q6k-v1.csv
+│   ├── corpus_timeline.csv
+│   ├── ic_grid.csv
+│   └── model_extraction_compare.csv
+├── horizon_scan_car.csv
+├── horizon_scan_ic.csv
+├── phase1_rare_events.csv
+└── phase2_daily_bars.csv
 ```
 
 ## Project Structure
@@ -292,7 +299,7 @@ alphasent/
 │   │   └── events.py              # EventRecord, EventType
 │   ├── extraction/
 │   │   ├── prompt.py              # Prompt builder + budget enforcement
-│   │   ├── model.py               # LLM call (local llama3-8b)
+│   │   ├── model.py               # LLM call (local phi4)
 │   │   ├── cache.py               # Content-hash cache (parquet)
 │   │   ├── novelty.py             # TF-IDF novel scorer
 │   │   └── batch_etl.py          # Offline batch extraction (with perimeter pre-filter)
@@ -306,7 +313,7 @@ alphasent/
 │   │   ├── baselines.py           # Momentum, raw-tone, buy-and-hold
 │   │   └── contamination.py       # Redaction test + temporal holdout
 │   └── live/
-│       ├── poller.py              # CryptoPanic polling loop (unused)
+│       ├── poller.py              # Poller module (CryptoPanic removed)
 │       ├── signal_server.py       # Bar-close signal generation
 │       ├── monitoring.py          # Health metrics
 │       └── smoke_test.py          # End-to-end smoke test
@@ -318,11 +325,18 @@ alphasent/
 ├── snippets/                      # Standalone ingestion scripts
 │   └── crypto_rss_ingest.py       # Multi-feed RSS ingester
 ├── data/
-│   ├── perimeter/                 # Monthly perp universe (input, 37 files)
+│   ├── perimeter/                 # Monthly perp universe (input, 35 files)
 │   ├── news/                      # GDELT output (371 partitions)
 │   ├── crypto_rss/                # RSS output (17 feeds, live)
+│   ├── ohlcv/                     # Binance OHLCV (5 symbols × 1h)
+│   ├── features/                  # Feature store (phi4)
+│   ├── features_llama3_backup/    # Legacy features (llama3-8b)
 │   ├── cache/                     # LLM extraction cache
-│   └── features/                  # Built features (to be generated)
+│   ├── results/                   # Backtest/analysis outputs
+│   ├── horizon_scan_car.csv       # Analysis output
+│   ├── horizon_scan_ic.csv
+│   ├── phase1_rare_events.csv
+│   └── phase2_daily_bars.csv
 ├── PLAN.md                        # Detailed project plan
 └── README.md                      # This file
 
