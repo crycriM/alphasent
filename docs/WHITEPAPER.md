@@ -41,7 +41,7 @@ The LLM emits one `EventRecord` per article: asset, event type (hack, regulation
 | RSS (17 feeds) | dense from 2026-06-22 → 2026-07-29 | 18,498 items | titles 100 %, summaries 97 % | live forward corpus |
 | Binance OHLCV | 2025-12-29 → 2026-07-18, hourly | 5 perps (BTC, ETH, BNB, SOL, XRP) | — | targets |
 
-![Corpus coverage by source](docs/figures/corpus_timeline.png)
+![Corpus coverage by source](figures/corpus_timeline.png)
 
 The two sources fill different gaps in time, but not in content. GDELT gives a year of article metadata — URL, named entities, and its own document-level tone score — but no article text. RSS gives full text for about five weeks. Since LLM extraction needs text, the extracted-event corpus concentrates wherever text is available:
 
@@ -74,7 +74,7 @@ t = z̄ / √(S/T),  S = γ̂₀ + 2 Σ_{l=1}^{L} (1 − l/(L+1)) γ̂_l,  L = h
 
 The denominator replaces the usual variance estimate with an autocovariance estimate that accounts for the first L = h − 1 lags. On simulated null data with 24-h overlapping returns and a persistent feature, the naive t-statistic reads 3.28 while the Newey–West t reads 0.95 (self-check in `scripts/ic_study.py`). A t ≈ 3 "discovery" can be pure overlap. The correction matters.
 
-![Naive vs overlap-robust inference](docs/figures/inference.png)
+![Naive vs overlap-robust inference](figures/inference.png)
 
 The figure illustrates both failure modes. **Left:** the rare-event composite IC evaluated both ways — the naive t-statistic crosses 2 at 12 h, reaches 5.7 at 72 h and 9.7 at 120 h, while the overlap-robust t never exceeds 1.5. Every "significant" reading is created by the h-fold overlap. **Right:** the strategy-level mistake — a Ridge model fit and traded on the same rows gives Sharpe ≈ 1.5, but under a 70/30 time split the same pipeline produces zero or negative Sharpe out-of-sample. The rare-event variant can't even be fit: those flag events concentrate in the final weeks (§2), so the training window is empty, coefficients are zero, and nothing trades. In-sample Sharpe and unadjusted t-statistics would both validate this; neither survives honest replication.
 
@@ -88,7 +88,7 @@ All results are persisted per implementation option in `data/results/ic_grid.csv
 
 ## 4. Results: IC across horizons and implementation options
 
-![Rank IC vs response horizon](docs/figures/ic_horizon_models.png)
+![Rank IC vs response horizon](figures/ic_horizon_models.png)
 
 Rank IC (`ts_all`, hourly cadence, full period), composites and baseline:
 
@@ -125,7 +125,7 @@ Two patterns are worth recording because both models agree:
 
 Decision cadence (how often you sample features) and response horizon (how far ahead the target return is) are independent knobs. Conflating them — saying "daily bars" and meaning both — makes a slow signal untestable at short horizons. Varying them independently reveals:
 
-![Feature cadence vs response horizon](docs/figures/ic_cadence.png)
+![Feature cadence vs response horizon](figures/ic_cadence.png)
 
 Hourly and daily cadences produce the same IC curve. The numbers line up within error bars (phi-4 composite at 72 h: 0.004 hourly vs 0.012 daily; rare-event composite at 120 h: 0.065 vs 0.082). Daily cadence loses 24× in observations (≈4,700 → ≈200) and gets wider confidence intervals as a result. Sampling more finely doesn't create information. Whatever signal exists is slow — days, not hours — and the operative knob is the **horizon**. Short-horizon (≤ 24 h) IC is flat zero for every feature and both models. Either the market absorbs headline-level news within the latency of free feeds, or the exploitable component simply doesn't live at intraday frequency.
 
@@ -179,7 +179,7 @@ These deltas are an upper bound on contamination: redaction perturbs the prompt 
 
 ## 9. Event-study: direction, beta, and the placebo
 
-![Raw vs market-adjusted CAR](docs/figures/car_adjusted.png)
+![Raw vs market-adjusted CAR](figures/car_adjusted.png)
 
 Raw CARs are misleading here. At 120 h the *negative*-news bucket shows **+2.99 %** drift — the wrong sign — and the placebo (unsure) bucket drifts +1.9 %. Both are market beta: event arrivals cluster in market-wide episodes, and any bucket of event-bars inherits the market's drift over the window. After subtracting equal-weight market return, the picture becomes interpretable (`data/results/car_adjusted.csv`):
 
