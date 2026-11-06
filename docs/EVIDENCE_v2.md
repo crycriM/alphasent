@@ -1,11 +1,7 @@
 # Evidence pack for WHITEPAPER_v2
 
-Everything a writer needs to produce `docs/WHITEPAPER_v2.md`. Every number below
-is traceable to a file in this repository; §7 gives the command that regenerates
-each block. If a number you want is not here or not in those files, it was not
-measured — say so rather than estimating it.
-
-This document is an input, not a draft. Do not copy its prose into the whitepaper.
+Experimental setup and outputs for `docs/WHITEPAPER_v2.md`. Outputs below traceable to a file in this repository; section 7 gives the command that regenerates  
+each block.
 
 ---
 
