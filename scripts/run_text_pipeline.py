@@ -5,6 +5,7 @@ No OHLCV or Binance required.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -19,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("text_pipeline")
 
 ASSETS_MIN_EVENTS = 5
-FEATURES_DIR = Path("data/features")
+FEATURES_DIR = Path(os.getenv("FEATURES_DIR", "data/features"))
 
 
 def build_all_features() -> pd.DataFrame:

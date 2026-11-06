@@ -122,12 +122,30 @@ def read_all_raw_news(data_root: Path = RAW_NEWS_DIR) -> pd.DataFrame:
     return combined
 
 
-def _resolve_universe(article_dates: pd.Series) -> set[str]:
-    """Load the crypto universe for the month of the earliest article.
-    
-    Assumes the entire batch is from roughly the same month, so we pick a single
-    universe at the start. For multi-month batches the caller should chunk.
+_UNIVERSE_CACHE: dict[tuple[int, int], set[str]] = {}
+
+
+def universe_for_day(day: date) -> set[str]:
+    """Perimeter universe of the item's own month, memoized per month.
+
+    The pre-filter must be point-in-time per article: a Feb-2026 article may only
+    match tickers listed in Feb 2026. Resolving ONE universe from the earliest
+    article of the batch (the old `_resolve_universe` behaviour) silently applies
+    an older month's listing set to every later month, which both misses tokens
+    listed in between and leaks the wrong perimeter into the match decision.
+    Memoizing per month keeps the per-item check cheap (the JSON parse happens at
+    most once per month present in the batch).
     """
+    key = (day.year, day.month)
+    if key not in _UNIVERSE_CACHE:
+        _UNIVERSE_CACHE[key] = load_universe(date(day.year, day.month, 1))
+        log.info("Crypto universe %04d-%02d: %d tickers",
+                 day.year, day.month, len(_UNIVERSE_CACHE[key]))
+    return _UNIVERSE_CACHE[key]
+
+
+def _resolve_universe(article_dates: pd.Series) -> set[str]:
+    """Universe for the month of the earliest article (single query helper)."""
     if article_dates.empty or article_dates.isna().all():
         univ_date = date.today().replace(day=1)
     else:
@@ -139,6 +157,19 @@ def _resolve_universe(article_dates: pd.Series) -> set[str]:
     universe = load_universe(univ_date)
     log.info("Using crypto universe from %s: %d tickers", univ_date, len(universe))
     return universe
+
+
+def _item_day(row) -> date:
+    """Published (or ingested) day of a raw-news row, NaN-safe."""
+    val = row.get("published_at", None)
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        val = row.get("ingested_at", None)
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return date.today()
+    ts = pd.Timestamp(val)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC")
+    return ts.date()
 
 
 def _safe_str(val) -> str:
@@ -195,8 +226,8 @@ def run_batch_extraction(
     if "published_at" in raw_df.columns:
         raw_df = raw_df.sort_values("published_at").reset_index(drop=True)
 
-    # Load the crypto universe for the earliest items in this batch
-    universe = _resolve_universe(raw_df["published_at"])
+    # Universe is resolved per item (see universe_for_day): a multi-month batch
+    # must not be pre-filtered with a single month's listing set.
 
     # Preload all cached records for the current (model, prompt) version in one
     # pass. This is both the cache-hit source (no per-row parquet reads) and the
@@ -237,8 +268,9 @@ def run_batch_extraction(
             continue
 
         # Cache miss — check if article mentions any known ticker
+        # PIT-safe: the universe is the one in force in the article's own month.
         text = _article_text(row)
-        matched_ticker = match_ticker(text, universe)
+        matched_ticker = match_ticker(text, universe_for_day(_item_day(row)))
 
         if matched_ticker is None:
             skipped_no_match += 1

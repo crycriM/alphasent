@@ -30,7 +30,7 @@ LLM_TIMEOUT = 60.0                       # seconds per extraction call
 LLM_MAX_RETRIES = 3
 
 # Model/prompt versioning — change these to force re-extraction
-MODEL_VERSION = "phi4-q6k-v1"
+MODEL_VERSION = os.getenv("MODEL_VERSION", "phi4-q6k-v1")
 PROMPT_VERSION = "1.0.0"
 
 # --- Extraction ---
